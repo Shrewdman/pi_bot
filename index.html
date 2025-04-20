@@ -1,36 +1,48 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pi Bot (Test Mode)</title>
+  <title>Pi Bot</title>
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    #status { font-weight: bold; font-size: 1.2em; margin-top: 10px; }
-    #countdown { font-size: 1.5em; color: #008000; }
+    #status { font-weight: bold; font-size: 1.2em; margin-top: 10px; color: green; }
+    #countdown { font-size: 1.4em; color: #005500; }
+    #stopBtn {
+      margin-top: 20px;
+      padding: 10px 16px;
+      font-size: 1em;
+      background-color: #d9534f;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      display: none;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <h2>Pi Bot (Test Mode)</h2>
-  <p><strong>Simulated Unlock Time:</strong> <span id="target-time"></span></p>
+  <h2>Pi Bot</h2>
+  <p><strong>Unlock Time:</strong> <span id="target-time"></span></p>
   <p><strong>Countdown:</strong> <span id="countdown"></span></p>
-  <p id="status">Authenticating (sandbox)...</p>
+  <p id="status">Authenticating...</p>
+  <button id="stopBtn" onclick="stopRetry()">Stop Retry</button>
 
   <script>
-    const bitgetAddress = "MDFNWH6ZFJVHJDLBMNOUT35X4EEKQVJAO3ZDL4NL7VQJLC4PJOQFWAAAAAAEJJJMOUSDC"; // Test address
-    const piAmount = "1"; // Fake test amount
-    const unlockTime = Date.now() + 1 * 60 * 1000; // 2 minutes from now
+    const bitgetAddress = "MDFNWH6ZFJVHJDLBMNOUT35X4EEKQVJAO3ZDL4NL7VQJLC4PJOQFWAAAAAAEJJJMOUSDC";
+    const piAmount = "2800";
+    const unlockTime = new Date("2025-04-20T18:30:04Z").getTime();
+
+    let sendInterval = null;
 
     document.getElementById("target-time").innerText = new Date(unlockTime).toLocaleString();
 
-    // Initialize Pi SDK in sandbox (test) mode
-    window.Pi.init({ version: "2.0", sandbox: true });
+    window.Pi.init({ version: "2.0", sandbox: false });
 
     window.Pi.authenticate(["username", "payments"], onAuthSuccess, onAuthFailure);
 
     function onAuthSuccess(auth) {
-      document.getElementById("status").innerText = "Authenticated (test). Waiting for simulated unlock...";
+      document.getElementById("status").innerText = "Authenticated. Waiting...";
       const interval = setInterval(() => {
         const now = Date.now();
         const diff = unlockTime - now;
@@ -38,7 +50,7 @@
         if (diff <= 0) {
           clearInterval(interval);
           document.getElementById("countdown").innerText = `0h 0m 0s`;
-          sendPi();
+          attemptSendLoop();
         } else {
           const hrs = Math.floor(diff / 3600000);
           const mins = Math.floor((diff % 3600000) / 60000);
@@ -52,19 +64,33 @@
       document.getElementById("status").innerText = "Auth failed: " + error;
     }
 
-    function sendPi() {
-      document.getElementById("status").innerText = "Simulated send (test mode)...";
-      window.Pi.createPayment({
-        amount: piAmount,
-        memo: "Test auto send",
-        to: bitgetAddress
-      }).then((payment) => {
-        document.getElementById("status").innerText = "Test Success! ID: " + payment.identifier;
-        console.log("Test payment object:", payment);
-      }).catch((err) => {
-        document.getElementById("status").innerText = "Test error: " + err.message;
-        console.error("Test error:", err);
-      });
+    function attemptSendLoop() {
+      document.getElementById("status").innerText = "Unlock reached. Attempting to send Pi...";
+      document.getElementById("stopBtn").style.display = "inline-block";
+
+      sendInterval = setInterval(() => {
+        window.Pi.createPayment({
+          amount: piAmount,
+          memo: "Auto-send to Bitget",
+          to: bitgetAddress
+        }).then((payment) => {
+          clearInterval(sendInterval);
+          document.getElementById("status").innerText = "Success! Tx ID: " + payment.identifier;
+          document.getElementById("stopBtn").style.display = "none";
+        }).catch((err) => {
+          console.log("Retrying... Reason:", err.message);
+          document.getElementById("status").innerText = "Retrying... " + err.message;
+        });
+      }, 1000);
+    }
+
+    function stopRetry() {
+      if (sendInterval) {
+        clearInterval(sendInterval);
+        sendInterval = null;
+        document.getElementById("status").innerText = "Retry loop stopped manually.";
+        document.getElementById("stopBtn").style.display = "none";
+      }
     }
   </script>
 </body>
