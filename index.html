@@ -6,10 +6,10 @@
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    #status { font-weight: bold; font-size: 1.2em; margin-top: 10px; color: green; }
-    #countdown { font-size: 1.4em; color: #005500; }
+    input, button { margin-top: 10px; padding: 8px; font-size: 1em; }
+    #status { font-weight: bold; font-size: 1.2em; margin-top: 15px; color: green; }
+    #countdown { font-size: 1.4em; color: #005500; margin-top: 10px; }
     #stopBtn {
-      margin-top: 20px;
       padding: 10px 16px;
       font-size: 1em;
       background-color: #d9534f;
@@ -18,31 +18,59 @@
       border-radius: 4px;
       display: none;
       cursor: pointer;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
   <h2>Pi Bot</h2>
-  <p><strong>Unlock Time:</strong> <span id="target-time"></span></p>
+
+  <label>Enter Unlock Date (YYYY-MM-DD):</label><br>
+  <input type="date" id="dateInput"><br>
+
+  <label>Enter Unlock Time (HH:MM:SS):</label><br>
+  <input type="time" id="timeInput" step="1"><br>
+
+  <label>Enter Amount to Send:</label><br>
+  <input type="number" id="amountInput" placeholder="e.g. 2800" min="0" step="0.000001"><br>
+
+  <button onclick="startBot()">Start Bot</button>
+
   <p><strong>Countdown:</strong> <span id="countdown"></span></p>
-  <p id="status">Authenticating...</p>
+  <p id="status">Waiting for input...</p>
   <button id="stopBtn" onclick="stopRetry()">Stop Retry</button>
 
   <script>
     const bitgetAddress = "MDFNWH6ZFJVHJDLBMNOUT35X4EEKQVJAO3ZDL4NL7VQJLC4PJOQFWAAAAAAEJJJMOUSDC";
-    const piAmount = "2800";
-    const unlockTime = new Date("2025-04-20T18:30:04Z").getTime();
-
+    let unlockTime = null;
     let sendInterval = null;
-
-    document.getElementById("target-time").innerText = new Date(unlockTime).toLocaleString();
+    let piAmount = null;
 
     window.Pi.init({ version: "2.0", sandbox: false });
 
     window.Pi.authenticate(["username", "payments"], onAuthSuccess, onAuthFailure);
 
     function onAuthSuccess(auth) {
-      document.getElementById("status").innerText = "Authenticated. Waiting...";
+      document.getElementById("status").innerText = "Authenticated. Ready.";
+    }
+
+    function onAuthFailure(error) {
+      document.getElementById("status").innerText = "Auth failed: " + error;
+    }
+
+    function startBot() {
+      const date = document.getElementById("dateInput").value;
+      const time = document.getElementById("timeInput").value;
+      piAmount = document.getElementById("amountInput").value;
+
+      if (!date || !time || !piAmount || parseFloat(piAmount) <= 0) {
+        alert("Please fill in all fields with valid values.");
+        return;
+      }
+
+      unlockTime = new Date(`${date}T${time}Z`).getTime();
+      document.getElementById("status").innerText = "Waiting for unlock time...";
+
       const interval = setInterval(() => {
         const now = Date.now();
         const diff = unlockTime - now;
@@ -60,12 +88,8 @@
       }, 500);
     }
 
-    function onAuthFailure(error) {
-      document.getElementById("status").innerText = "Auth failed: " + error;
-    }
-
     function attemptSendLoop() {
-      document.getElementById("status").innerText = "Unlock reached. Attempting to send Pi...";
+      document.getElementById("status").innerText = "Unlock hit. Attempting to send...";
       document.getElementById("stopBtn").style.display = "inline-block";
 
       sendInterval = setInterval(() => {
