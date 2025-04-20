@@ -8,6 +8,7 @@
     body { font-family: sans-serif; padding: 20px; }
     input, button { margin-top: 10px; padding: 8px; font-size: 1em; }
     #status { font-weight: bold; font-size: 1.2em; margin-top: 15px; color: green; }
+    #warning { color: red; font-weight: bold; margin-top: 10px; }
     #countdown { font-size: 1.4em; color: #005500; margin-top: 10px; }
     #stopBtn {
       padding: 10px 16px;
@@ -38,6 +39,7 @@
 
   <p><strong>Countdown:</strong> <span id="countdown"></span></p>
   <p id="status">Waiting for input...</p>
+  <p id="warning"></p>
   <button id="stopBtn" onclick="stopRetry()">Stop Retry</button>
 
   <script>
@@ -45,6 +47,7 @@
     let unlockTime = null;
     let sendInterval = null;
     let piAmount = null;
+    let logs = [];
 
     window.Pi.init({ version: "2.0", sandbox: false });
 
@@ -52,10 +55,12 @@
 
     function onAuthSuccess(auth) {
       document.getElementById("status").innerText = "Authenticated. Ready.";
+      document.getElementById("warning").innerText = "";
     }
 
     function onAuthFailure(error) {
-      document.getElementById("status").innerText = "Auth failed: " + error;
+      document.getElementById("status").innerText = "Auth failed.";
+      document.getElementById("warning").innerText = "Wallet not connected. Please ensure Pi Wallet is open in Pi Browser.";
     }
 
     function startBot() {
@@ -70,6 +75,9 @@
 
       unlockTime = new Date(`${date}T${time}Z`).getTime();
       document.getElementById("status").innerText = "Waiting for unlock time...";
+      logs.push(`Bot started at ${new Date().toISOString()}`);
+      logs.push(`Unlock scheduled for: ${new Date(unlockTime).toISOString()}`);
+      logs.push(`Amount: ${piAmount} PI`);
 
       const interval = setInterval(() => {
         const now = Date.now();
@@ -93,6 +101,9 @@
       document.getElementById("stopBtn").style.display = "inline-block";
 
       sendInterval = setInterval(() => {
+        const timestamp = new Date().toISOString();
+        logs.push(`[${timestamp}] Attempting transaction...`);
+
         window.Pi.createPayment({
           amount: piAmount,
           memo: "Auto-send to Bitget",
@@ -101,8 +112,11 @@
           clearInterval(sendInterval);
           document.getElementById("status").innerText = "Success! Tx ID: " + payment.identifier;
           document.getElementById("stopBtn").style.display = "none";
+          logs.push(`[${timestamp}] SUCCESS: Transaction ID ${payment.identifier}`);
+          downloadLog();
+          alert("Transaction sent successfully!");
         }).catch((err) => {
-          console.log("Retrying... Reason:", err.message);
+          logs.push(`[${timestamp}] Retry failed: ${err.message}`);
           document.getElementById("status").innerText = "Retrying... " + err.message;
         });
       }, 1000);
@@ -114,7 +128,17 @@
         sendInterval = null;
         document.getElementById("status").innerText = "Retry loop stopped manually.";
         document.getElementById("stopBtn").style.display = "none";
+        logs.push(`[${new Date().toISOString()}] Retry stopped by user.`);
+        downloadLog();
       }
+    }
+
+    function downloadLog() {
+      const blob = new Blob([logs.join("\n")], { type: "text/plain" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `pi_bot_log_${Date.now()}.txt`;
+      link.click();
     }
   </script>
 </body>
