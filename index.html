@@ -5,141 +5,355 @@
   <title>Pi Bot</title>
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    input, button { margin-top: 10px; padding: 8px; font-size: 1em; }
-    #status { font-weight: bold; font-size: 1.2em; margin-top: 15px; color: green; }
-    #warning { color: red; font-weight: bold; margin-top: 10px; }
-    #countdown { font-size: 1.4em; color: #005500; margin-top: 10px; }
-    #stopBtn {
-      padding: 10px 16px;
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    input, button {
+      margin-top: 10px;
+      padding: 8px;
       font-size: 1em;
-      background-color: #d9534f;
-      color: white;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      cursor: pointer;
       border: none;
       border-radius: 4px;
+      color: white;
+    }
+    #startBtn { background-color: #5cb85c; }
+    #resetBtn { background-color: #f0ad4e; }
+    #stopBtn {
+      background-color: #d9534f;
       display: none;
-      cursor: pointer;
       margin-top: 20px;
     }
+    #status {
+      font-weight: bold;
+      font-size: 1.2em;
+      margin-top: 15px;
+      color: green;
+    }
+    #warning {
+      color: red;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    #countdown {
+      font-size: 1.4em;
+      color: #005500;
+      margin-top: 10px;
+    }
+    .error { border: 2px solid red; }
   </style>
 </head>
 <body>
   <h2>Pi Bot</h2>
 
-  <label>Enter Unlock Date (YYYY-MM-DD):</label><br>
-  <input type="date" id="dateInput"><br>
+  <label for="addressInput">Recipient Address:</label>
+  <input type="text" id="addressInput" placeholder="Enter valid Pi wallet address" aria-label="Recipient Address">
 
-  <label>Enter Unlock Time (HH:MM:SS):</label><br>
-  <input type="time" id="timeInput" step="1"><br>
+  <label for="dateInput">Unlock Date (YYYY-MM-DD):</label>
+  <input type="date" id="dateInput" aria-label="Unlock Date">
 
-  <label>Enter Amount to Send:</label><br>
-  <input type="number" id="amountInput" placeholder="e.g. 2800" min="0" step="0.000001"><br>
+  <label for="timeInput">Unlock Time (HH:MM:SS, Local Time):</label>
+  <input type="time" id="timeInput" step="1" aria-label="Unlock Time">
 
-  <button onclick="startBot()">Start Bot</button>
+  <label for="amountInput">Amount to Send (PI):</label>
+  <input type="number" id="amountInput" placeholder="e.g. 2800" min="0" step="0.000001" aria-label="Amount">
+
+  <button id="startBtn" onclick="piBot.start()">Start Bot</button>
+  <button id="resetBtn" onclick="piBot.reset()">Reset</button>
+  <button id="stopBtn" onclick="piBot.stopRetry()">Stop Retry</button>
 
   <p><strong>Countdown:</strong> <span id="countdown"></span></p>
-  <p id="status">Waiting for input...</p>
-  <p id="warning"></p>
-  <button id="stopBtn" onclick="stopRetry()">Stop Retry</button>
+  <p id="status" role="status">Checking environment...</p>
+  <p id="warning" role="alert"></p>
 
   <script>
-    const bitgetAddress = "MDFNWH6ZFJVHJDLBMNOUT35X4EEKQVJAO3ZDL4NL7VQJLC4PJOQFWAAAAAAEJJJMOUSDC";
-    let unlockTime = null;
-    let sendInterval = null;
-    let piAmount = null;
-    let logs = [];
+    // Constants
+    const RETRY_INTERVAL_MS = 1000; // 1 second as requested
+    const MAX_AMOUNT = 1000000; // Arbitrary max to prevent absurd inputs
+    const MIN_AMOUNT = 0.000001; // Minimum amount for Pi transactions
+    const LOG_STORAGE_KEY = "piBotLogs";
 
-    window.Pi.init({ version: "2.0", sandbox: false });
+    class PiBot {
+      constructor() {
+        this.unlockTime = null;
+        this.sendInterval = null;
+        this.piAmount = null;
+        this.recipientAddress = null;
+        this.logs = [];
+        this.isAuthenticated = false;
+        this.countdownInterval = null;
 
-    window.Pi.authenticate(["username", "payments"], onAuthSuccess, onAuthFailure);
+        // Bind DOM elements
+        this.elements = {
+          addressInput: document.getElementById("addressInput"),
+          dateInput: document.getElementById("dateInput"),
+          timeInput: document.getElementById("timeInput"),
+          amountInput: document.getElementById("amountInput"),
+          status: document.getElementById("status"),
+          warning: document.getElementById("warning"),
+          countdown: document.getElementById("countdown"),
+          stopBtn: document.getElementById("stopBtn"),
+        };
 
-    function onAuthSuccess(auth) {
-      document.getElementById("status").innerText = "Authenticated. Ready.";
-      document.getElementById("warning").innerText = "";
-    }
-
-    function onAuthFailure(error) {
-      document.getElementById("status").innerText = "Auth failed.";
-      document.getElementById("warning").innerText = "Wallet not connected. Please ensure Pi Wallet is open in Pi Browser.";
-    }
-
-    function startBot() {
-      const date = document.getElementById("dateInput").value;
-      const time = document.getElementById("timeInput").value;
-      piAmount = document.getElementById("amountInput").value;
-
-      if (!date || !time || !piAmount || parseFloat(piAmount) <= 0) {
-        alert("Please fill in all fields with valid values.");
-        return;
+        // Initialize
+        this.init();
       }
 
-      unlockTime = new Date(`${date}T${time}Z`).getTime();
-      document.getElementById("status").innerText = "Waiting for unlock time...";
-      logs.push(`Bot started at ${new Date().toISOString()}`);
-      logs.push(`Unlock scheduled for: ${new Date(unlockTime).toISOString()}`);
-      logs.push(`Amount: ${piAmount} PI`);
-
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const diff = unlockTime - now;
-
-        if (diff <= 0) {
-          clearInterval(interval);
-          document.getElementById("countdown").innerText = `0h 0m 0s`;
-          attemptSendLoop();
-        } else {
-          const hrs = Math.floor(diff / 3600000);
-          const mins = Math.floor((diff % 3600000) / 60000);
-          const secs = Math.floor((diff % 60000) / 1000);
-          document.getElementById("countdown").innerText = `${hrs}h ${mins}m ${secs}s`;
+      init() {
+        // Check for Pi Browser and SDK
+        if (!window.Pi) {
+          this.setWarning("This app requires Pi Browser.");
+          this.setStatus("Environment error.");
+          return;
         }
-      }, 500);
-    }
 
-    function attemptSendLoop() {
-      document.getElementById("status").innerText = "Unlock hit. Attempting to send...";
-      document.getElementById("stopBtn").style.display = "inline-block";
+        // Initialize Pi SDK
+        window.Pi.init({ version: "2.0", sandbox: false });
 
-      sendInterval = setInterval(() => {
-        const timestamp = new Date().toISOString();
-        logs.push(`[${timestamp}] Attempting transaction...`);
+        // Load existing logs
+        this.loadLogs();
 
-        window.Pi.createPayment({
-          amount: piAmount,
-          memo: "Auto-send to Bitget",
-          to: bitgetAddress
-        }).then((payment) => {
-          clearInterval(sendInterval);
-          document.getElementById("status").innerText = "Success! Tx ID: " + payment.identifier;
-          document.getElementById("stopBtn").style.display = "none";
-          logs.push(`[${timestamp}] SUCCESS: Transaction ID ${payment.identifier}`);
-          downloadLog();
-          alert("Transaction sent successfully!");
-        }).catch((err) => {
-          logs.push(`[${timestamp}] Retry failed: ${err.message}`);
-          document.getElementById("status").innerText = "Retrying... " + err.message;
-        });
-      }, 1000);
-    }
+        // Attempt authentication
+        window.Pi.authenticate(["username", "payments"])
+          .then((auth) => {
+            this.isAuthenticated = true;
+            this.setStatus("Authenticated. Ready to start.");
+            this.log(`Authentication successful for user: ${auth.user.username}`);
+          })
+          .catch((err) => {
+            this.setStatus("Authentication failed.");
+            this.setWarning(`Wallet not connected: ${err.message}. Ensure Pi Wallet is open in Pi Browser.`);
+            this.log(`Authentication failed: ${err.message}`);
+          });
 
-    function stopRetry() {
-      if (sendInterval) {
-        clearInterval(sendInterval);
-        sendInterval = null;
-        document.getElementById("status").innerText = "Retry loop stopped manually.";
-        document.getElementById("stopBtn").style.display = "none";
-        logs.push(`[${new Date().toISOString()}] Retry stopped by user.`);
-        downloadLog();
+        // Check network status
+        window.addEventListener("online", () => this.setWarning(""));
+        window.addEventListener("offline", () =>
+          this.setWarning("Offline. Please check your internet connection.")
+        );
+      }
+
+      validateInputs() {
+        const { addressInput, dateInput, timeInput, amountInput } = this.elements;
+        const address = addressInput.value.trim();
+        const date = dateInput.value;
+        const time = timeInput.value;
+        const amount = parseFloat(amountInput.value);
+
+        // Reset error styles
+        [addressInput, dateInput, timeInput, amountInput].forEach((el) =>
+          el.classList.remove("error")
+        );
+
+        // Validate address (basic check, adjust based on Pi address format)
+        if (!address || address.length < 10) {
+          addressInput.classList.add("error");
+          throw new Error("Please enter a valid Pi wallet address.");
+        }
+
+        // Validate date and time
+        const unlockDate = new Date(`${date}T${time}`);
+        if (!date || !time || isNaN(unlockDate.getTime())) {
+          dateInput.classList.add("error");
+          timeInput.classList.add("error");
+          throw new Error("Please enter a valid date and time.");
+        }
+        if (unlockDate <= Date.now()) {
+          dateInput.classList.add("error");
+          timeInput.classList.add("error");
+          throw new Error("Unlock date and time must be in the future.");
+        }
+
+        // Validate amount
+        if (isNaN(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+          amountInput.classList.add("error");
+          throw new Error(`Amount must be between ${MIN_AMOUNT} and ${MAX_AMOUNT} PI.`);
+        }
+
+        return { address, unlockDate, amount };
+      }
+
+      start() {
+        try {
+          if (!this.isAuthenticated) {
+            throw new Error("Please authenticate with Pi Wallet first.");
+          }
+
+          const { address, unlockDate, amount } = this.validateInputs();
+
+          // Confirm with user
+          if (
+            !confirm(
+              `Confirm transaction:\nRecipient: ${address}\nDate: ${unlockDate.toLocaleString()}\nAmount: ${amount} PI`
+            )
+          ) {
+            this.setStatus("Bot startup canceled.");
+            return;
+          }
+
+          this.recipientAddress = address;
+          this.piAmount = amount;
+          this.unlockTime = unlockDate.getTime();
+
+          this.setStatus("Waiting for unlock time...");
+          this.log(`Bot started at ${new Date().toISOString()}`);
+          this.log(`Unlock scheduled for: ${unlockDate.toISOString()}`);
+          this.log(`Amount: ${amount} PI to ${address}`);
+
+          this.startCountdown();
+        } catch (err) {
+          this.setWarning(err.message);
+          this.log(`Error: ${err.message}`);
+        }
+      }
+
+      startCountdown() {
+        this.countdownInterval = setInterval(() => {
+          const now = Date.now();
+          const diff = this.unlockTime - now;
+
+          if (diff <= 0) {
+            clearInterval(this.countdownInterval);
+            this.elements.countdown.innerText = "0h 0m 0s";
+            this.attemptSendLoop();
+          } else {
+            const hrs = Math.floor(diff / 3600000);
+            const mins = Math.floor((diff % 3600000) / 60000);
+            const secs = Math.floor((diff % 60000) / 1000);
+            this.elements.countdown.innerText = `${hrs}h ${mins}m ${secs}s`;
+          }
+        }, 500);
+      }
+
+      attemptSendLoop() {
+        if (!navigator.onLine) {
+          this.setStatus("Offline. Waiting for connection...");
+          this.setWarning("Please check your internet connection.");
+          return;
+        }
+
+        this.setStatus("Unlock time reached. Attempting to send...");
+        this.elements.stopBtn.style.display = "inline-block";
+
+        this.sendInterval = setInterval(() => {
+          const timestamp = new Date().toISOString();
+          this.log(`[${timestamp}] Attempting transaction...`);
+
+          window.Pi.createPayment({
+            amount: this.piAmount,
+            memo: "Auto-send from Pi Bot",
+            to: this.recipientAddress,
+          })
+            .then((payment) => {
+              clearInterval(this.sendInterval);
+              this.setStatus(`Success! Transaction ID: ${payment.identifier}`);
+              this.elements.stopBtn.style.display = "none";
+              this.log(`[${timestamp}] SUCCESS: Transaction ID ${payment.identifier}`);
+              this.downloadLog();
+              alert("Transaction sent successfully!");
+            })
+            .catch((err) => {
+              this.log(`[${timestamp}] Retry failed: ${err.message}`);
+              this.setStatus(`Retrying... ${err.message}`);
+
+              // Stop retries for non-recoverable errors
+              if (
+                err.message.includes("insufficient balance") ||
+                err.message.includes("invalid address") ||
+                err.message.includes("unauthorized")
+              ) {
+                clearInterval(this.sendInterval);
+                this.setStatus(`Fatal error: ${err.message}`);
+                this.elements.stopBtn.style.display = "none";
+                this.log(`[${timestamp}] Stopped due to fatal error: ${err.message}`);
+                this.downloadLog();
+                alert(`Transaction failed: ${err.message}`);
+              }
+            });
+        }, RETRY_INTERVAL_MS);
+      }
+
+      stopRetry() {
+        if (this.sendInterval) {
+          clearInterval(this.sendInterval);
+          this.sendInterval = null;
+          this.setStatus("Retry loop stopped manually.");
+          this.elements.stopBtn.style.display = "none";
+          this.log(`[${new Date().toISOString()}] Retry stopped by user.`);
+          this.downloadLog();
+        }
+      }
+
+      reset() {
+        clearInterval(this.countdownInterval);
+        clearInterval(this.sendInterval);
+        this.unlockTime = null;
+        this.sendInterval = null;
+        this.piAmount = null;
+        this.recipientAddress = null;
+        this.elements.addressInput.value = "";
+        this.elements.dateInput.value = "";
+        this.elements.timeInput.value = "";
+        this.elements.amountInput.value = "";
+        this.elements.status.innerText = this.isAuthenticated
+          ? "Authenticated. Ready to start."
+          : "Checking environment...";
+        this.elements.countdown.innerText = "";
+        this.elements.warning.innerText = "";
+        this.elements.stopBtn.style.display = "none";
+        [this.elements.addressInput, this.elements.dateInput, this.elements.timeInput, this.elements.amountInput].forEach(
+          (el) => el.classList.remove("error")
+        );
+        this.log(`[${new Date().toISOString()}] Bot reset by user.`);
+      }
+
+      log(message) {
+        this.logs.push(message);
+        this.saveLogs();
+      }
+
+      saveLogs() {
+        localStorage.setItem(LOG_STORAGE_KEY, this.logs.join("\n"));
+      }
+
+      loadLogs() {
+        const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
+        if (savedLogs) {
+          this.logs = savedLogs.split("\n");
+        }
+      }
+
+      downloadLog() {
+        const blob = new Blob([this.logs.join("\n")], { type: "text/plain" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `pi_bot_log_${Date.now()}.txt`;
+        link.click();
+      }
+
+      setStatus(message) {
+        this.elements.status.innerText = message;
+      }
+
+      setWarning(message) {
+        this.elements.warning.innerText = message;
       }
     }
 
-    function downloadLog() {
-      const blob = new Blob([logs.join("\n")], { type: "text/plain" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `pi_bot_log_${Date.now()}.txt`;
-      link.click();
-    }
+    // Instantiate the bot
+    const piBot = new PiBot();
   </script>
 </body>
 </html>
