@@ -36,6 +36,7 @@
       display: none;
       margin-top: 20px;
     }
+    #authBtn { background-color: #337ab7; }
     #status {
       font-weight: bold;
       font-size: 1.2em;
@@ -80,10 +81,11 @@
 
   <script>
     // Constants
-    const RETRY_INTERVAL_MS = 1000; // 1 second as requested
-    const MAX_AMOUNT = 1000000; // Arbitrary max to prevent absurd inputs
-    const MIN_AMOUNT = 0.000001; // Minimum amount for Pi transactions
+    const RETRY_INTERVAL_MS = 1000; // 1 second
+    const MAX_AMOUNT = 1000000;
+    const MIN_AMOUNT = 0.000001;
     const LOG_STORAGE_KEY = "piBotLogs";
+    const AUTH_RETRY_DELAY_MS = 5000; // 5 seconds for retry
 
     class PiBot {
       constructor() {
@@ -105,6 +107,8 @@
           warning: document.getElementById("warning"),
           countdown: document.getElementById("countdown"),
           stopBtn: document.getElementById("stopBtn"),
+          startBtn: document.getElementById("startBtn"),
+          authBtn: null, // Will be created dynamically
         };
 
         // Initialize
@@ -116,6 +120,7 @@
         if (!window.Pi) {
           this.setWarning("This app requires Pi Browser.");
           this.setStatus("Environment error.");
+          this.elements.startBtn.disabled = true;
           return;
         }
 
@@ -125,24 +130,65 @@
         // Load existing logs
         this.loadLogs();
 
-        // Attempt authentication
-        window.Pi.authenticate(["username", "payments"])
-          .then((auth) => {
-            this.isAuthenticated = true;
-            this.setStatus("Authenticated. Ready to start.");
-            this.log(`Authentication successful for user: ${auth.user.username}`);
-          })
-          .catch((err) => {
-            this.setStatus("Authentication failed.");
-            this.setWarning(`Wallet not connected: ${err.message}. Ensure Pi Wallet is open in Pi Browser.`);
-            this.log(`Authentication failed: ${err.message}`);
-          });
+        // Create Authenticate button
+        this.createAuthButton();
+
+        // Disable Start button until authenticated
+        this.elements.startBtn.disabled = true;
 
         // Check network status
         window.addEventListener("online", () => this.setWarning(""));
         window.addEventListener("offline", () =>
           this.setWarning("Offline. Please check your internet connection.")
         );
+
+        this.setStatus("Please authenticate with Pi Wallet.");
+        this.setWarning(
+          "Open wallet.pinet.com in Pi Browser, log in, then return here and click 'Authenticate Wallet'. Use the back button if redirected."
+        );
+      }
+
+      createAuthButton() {
+        const authBtn = document.createElement("button");
+        authBtn.id = "authBtn";
+        authBtn.innerText = "Authenticate Wallet";
+        authBtn.style.backgroundColor = "#337ab7";
+        authBtn.style.marginTop = "10px";
+        authBtn.onclick = () => this.authenticate();
+        this.elements.startBtn.parentNode.insertBefore(authBtn, this.elements.startBtn);
+        this.elements.authBtn = authBtn;
+      }
+
+      authenticate(retryCount = 0, maxRetries = 3) {
+        this.setStatus("Attempting authentication...");
+        this.setWarning("");
+        this.elements.authBtn.disabled = true;
+
+        window.Pi.authenticate(["username", "payments"])
+          .then((auth) => {
+            this.isAuthenticated = true;
+            this.setStatus("Authenticated. Ready to start.");
+            this.elements.authBtn.style.display = "none";
+            this.elements.startBtn.disabled = false;
+            this.log(`Authentication successful for user: ${auth.user.username}`);
+          })
+          .catch((err) => {
+            if (retryCount < maxRetries) {
+              this.setStatus(`Authentication failed. Retrying in ${AUTH_RETRY_DELAY_MS / 1000} seconds...`);
+              this.log(`Authentication failed (attempt ${retryCount + 1}): ${err.message}`);
+              setTimeout(() => {
+                this.elements.authBtn.disabled = false;
+                this.authenticate(retryCount + 1, maxRetries);
+              }, AUTH_RETRY_DELAY_MS);
+            } else {
+              this.setStatus("Authentication failed.");
+              this.setWarning(
+                `Wallet not connected: ${err.message}. Open wallet.pinet.com, log in, and try again. Ensure Private DNS is off in phone settings.`
+              );
+              this.elements.authBtn.disabled = false;
+              this.log(`Authentication failed after ${maxRetries} attempts: ${err.message}`);
+            }
+          });
       }
 
       validateInputs() {
@@ -157,7 +203,7 @@
           el.classList.remove("error")
         );
 
-        // Validate address (basic check, adjust based on Pi address format)
+        // Validate address
         if (!address || address.length < 10) {
           addressInput.classList.add("error");
           throw new Error("Please enter a valid Pi wallet address.");
@@ -309,10 +355,11 @@
         this.elements.amountInput.value = "";
         this.elements.status.innerText = this.isAuthenticated
           ? "Authenticated. Ready to start."
-          : "Checking environment...";
+          : "Please authenticate with Pi Wallet.";
         this.elements.countdown.innerText = "";
         this.elements.warning.innerText = "";
         this.elements.stopBtn.style.display = "none";
+        this.elements.startBtn.disabled = !this.isAuthenticated;
         [this.elements.addressInput, this.elements.dateInput, this.elements.timeInput, this.elements.amountInput].forEach(
           (el) => el.classList.remove("error")
         );
@@ -325,7 +372,11 @@
       }
 
       saveLogs() {
-        localStorage.setItem(LOG_STORAGE_KEY, this.logs.join("\n"));
+        try {
+          localStorage.setItem(LOG_STORAGE_KEY, this.logs.join("\n"));
+        } catch (e) {
+          this.downloadLog();
+        }
       }
 
       loadLogs() {
