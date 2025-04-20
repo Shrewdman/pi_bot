@@ -86,6 +86,7 @@
     const MIN_AMOUNT = 0.000001;
     const LOG_STORAGE_KEY = "piBotLogs";
     const AUTH_RETRY_DELAY_MS = 5000; // 5 seconds for retry
+    const AUTH_PENDING_KEY = "piBotAuthPending";
 
     class PiBot {
       constructor() {
@@ -142,10 +143,17 @@
           this.setWarning("Offline. Please check your internet connection.")
         );
 
-        this.setStatus("Please authenticate with Pi Wallet.");
-        this.setWarning(
-          "Open wallet.pinet.com in Pi Browser, log in, then return here and click 'Authenticate Wallet'. Use the back button if redirected."
-        );
+        // Check if returning from wallet redirect
+        const urlParams = new URLSearchParams(window.location.search);
+        const isAuthReturn = urlParams.get("auth") === "try" || localStorage.getItem(AUTH_PENDING_KEY);
+        if (isAuthReturn) {
+          this.authenticate();
+        } else {
+          this.setStatus("Please authenticate with Pi Wallet.");
+          this.setWarning(
+            "Click 'Authenticate Wallet' to log in at wallet.pinet.com. You'll be redirected back here after login."
+          );
+        }
       }
 
       createAuthButton() {
@@ -160,6 +168,14 @@
       }
 
       authenticate(retryCount = 0, maxRetries = 3) {
+        // If first attempt, redirect to wallet
+        if (retryCount === 0 && !localStorage.getItem(AUTH_PENDING_KEY)) {
+          localStorage.setItem(AUTH_PENDING_KEY, "true");
+          const redirectUri = encodeURIComponent(`${window.location.origin}${window.location.pathname}?auth=try`);
+          window.location.href = `https://wallet.pinet.com/?redirect_uri=${redirectUri}`;
+          return;
+        }
+
         this.setStatus("Attempting authentication...");
         this.setWarning("");
         this.elements.authBtn.disabled = true;
@@ -170,7 +186,10 @@
             this.setStatus("Authenticated. Ready to start.");
             this.elements.authBtn.style.display = "none";
             this.elements.startBtn.disabled = false;
+            localStorage.removeItem(AUTH_PENDING_KEY);
             this.log(`Authentication successful for user: ${auth.user.username}`);
+            // Clear URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
           })
           .catch((err) => {
             if (retryCount < maxRetries) {
@@ -186,7 +205,10 @@
                 `Wallet not connected: ${err.message}. Open wallet.pinet.com, log in, and try again. Ensure Private DNS is off in phone settings.`
               );
               this.elements.authBtn.disabled = false;
+              localStorage.removeItem(AUTH_PENDING_KEY);
               this.log(`Authentication failed after ${maxRetries} attempts: ${err.message}`);
+              // Clear URL parameters
+              window.history.replaceState({}, document.title, window.location.pathname);
             }
           });
       }
