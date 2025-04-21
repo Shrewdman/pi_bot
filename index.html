@@ -1,432 +1,410 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Pi Bot</title>
-  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    label {
-      display: block;
-      margin-top: 15px;
-      font-weight: bold;
-    }
-    input, button {
-      margin-top: 10px;
-      padding: 8px;
-      font-size: 1em;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    button {
-      cursor: pointer;
-      border: none;
-      border-radius: 4px;
-      color: white;
-    }
-    #startBtn { background-color: #5cb85c; }
-    #resetBtn { background-color: #f0ad4e; }
-    #stopBtn {
-      background-color: #d9534f;
-      display: none;
-      margin-top: 20px;
-    }
-    #authBtn { background-color: #337ab7; }
-    #status {
-      font-weight: bold;
-      font-size: 1.2em;
-      margin-top: 15px;
-      color: green;
-    }
-    #warning {
-      color: red;
-      font-weight: bold;
-      margin-top: 10px;
-    }
-    #countdown {
-      font-size: 1.4em;
-      color: #005500;
-      margin-top: 10px;
-    }
-    .error { border: 2px solid red; }
-  </style>
+ <meta charset="UTF-8">
+ <title>Pi Bot</title>
+ <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+ <style>
+ body {
+ font-family: sans-serif;
+ padding: 20px;
+ max-width: 600px;
+ margin: 0 auto;
+ }
+ label {
+ display: block;
+ margin-top: 15px;
+ font-weight: bold;
+ }
+ input, button {
+ margin-top: 10px;
+ padding: 8px;
+ font-size: 1em;
+ width: 100%;
+ box-sizing: border-box;
+ }
+ button {
+ cursor: pointer;
+ border: none;
+ border-radius: 4px;
+ color: white;
+ }
+ #startBtn { background-color: #5cb85c; }
+ #resetBtn { background-color: #f0ad4e; }
+ #stopBtn {
+ background-color: #d9534f;
+ display: none;
+ margin-top: 20px;
+ }
+ #authBtn { background-color: #337ab7; }
+ #status {
+ font-weight: bold;
+ font-size: 1.2em;
+ margin-top: 15px;
+ color: green;
+ }
+ #warning {
+ color: red;
+ font-weight: bold;
+ margin-top: 10px;
+ }
+ #countdown {
+ font-size: 1.4em;
+ color: #005500;
+ margin-top: 10px;
+ }
+ .error { border: 2px solid red; }
+ </style>
 </head>
 <body>
-  <h2>Pi Bot</h2>
+ <h2>Pi Bot</h2>
 
-  <label for="addressInput">Recipient Address:</label>
-  <input type="text" id="addressInput" placeholder="Enter valid Pi wallet address" aria-label="Recipient Address">
+ <label for="addressInput">Recipient Address:</label>
+ <input type="text" id="addressInput" placeholder="Enter valid Pi wallet address" aria-label="Recipient Address">
 
-  <label for="dateInput">Unlock Date (YYYY-MM-DD):</label>
-  <input type="date" id="dateInput" aria-label="Unlock Date">
+ <label for="dateInput">Unlock Date (YYYY-MM-DD):</label>
+ <input type="date" id="dateInput" aria-label="Unlock Date">
 
-  <label for="timeInput">Unlock Time (HH:MM:SS, Local Time):</label>
-  <input type="time" id="timeInput" step="1" aria-label="Unlock Time">
+ <label for="timeInput">Unlock Time (HH:MM:SS, Local Time):</label>
+ <input type="time" id="timeInput" step="1" aria-label="Unlock Time">
 
-  <label for="amountInput">Amount to Send (PI):</label>
-  <input type="number" id="amountInput" placeholder="e.g. 2800" min="0" step="0.000001" aria-label="Amount">
+ <label for="amountInput">Amount to Send (PI):</label>
+ <input type="number" id="amountInput" placeholder="e.g. 2800" min="0" step="0.000001" aria-label="Amount">
 
-  <button id="startBtn" onclick="piBot.start()">Start Bot</button>
-  <button id="resetBtn" onclick="piBot.reset()">Reset</button>
-  <button id="stopBtn" onclick="piBot.stopRetry()">Stop Retry</button>
+ <button id="startBtn" onclick="piBot.start()">Start Bot</button>
+ <button id="resetBtn" onclick="piBot.reset()">Reset</button>
+ <button id="stopBtn" onclick="piBot.stopRetry()">Stop Retry</button>
 
-  <p><strong>Countdown:</strong> <span id="countdown"></span></p>
-  <p id="status" role="status">Checking environment...</p>
-  <p id="warning" role="alert"></p>
+ <p><strong>Countdown:</strong> <span id="countdown"></span></p>
+ <p id="status" role="status">Checking environment...</p>
+ <p id="warning" role="alert"></p>
 
-  <script>
-    // Constants
-    const RETRY_INTERVAL_MS = 1000; // 1 second
-    const MAX_AMOUNT = 1000000;
-    const MIN_AMOUNT = 0.000001;
-    const LOG_STORAGE_KEY = "piBotLogs";
-    const AUTH_RETRY_DELAY_MS = 5000; // 5 seconds for retry
-    const AUTH_PENDING_KEY = "piBotAuthPending";
+ <script>
+ // Constants
+ const RETRY_INTERVAL_MS = 1000; // 1 second
+ const MAX_AMOUNT = 1000000;
+ const MIN_AMOUNT = 0.000001;
+ const LOG_STORAGE_KEY = "piBotLogs";
+ const AUTH_RETRY_DELAY_MS = 5000; // 5 seconds for retry
 
-    class PiBot {
-      constructor() {
-        this.unlockTime = null;
-        this.sendInterval = null;
-        this.piAmount = null;
-        this.recipientAddress = null;
-        this.logs = [];
-        this.isAuthenticated = false;
-        this.countdownInterval = null;
+ class PiBot {
+ constructor() {
+ this.unlockTime = null;
+ this.sendInterval = null;
+ this.piAmount = null;
+ this.recipientAddress = null;
+ this.logs = [];
+ this.isAuthenticated = false;
+ this.countdownInterval = null;
 
-        // Bind DOM elements
-        this.elements = {
-          addressInput: document.getElementById("addressInput"),
-          dateInput: document.getElementById("dateInput"),
-          timeInput: document.getElementById("timeInput"),
-          amountInput: document.getElementById("amountInput"),
-          status: document.getElementById("status"),
-          warning: document.getElementById("warning"),
-          countdown: document.getElementById("countdown"),
-          stopBtn: document.getElementById("stopBtn"),
-          startBtn: document.getElementById("startBtn"),
-          authBtn: null, // Will be created dynamically
-        };
+ // Bind DOM elements
+ this.elements = {
+ addressInput: document.getElementById("addressInput"),
+ dateInput: document.getElementById("dateInput"),
+ timeInput: document.getElementById("timeInput"),
+ amountInput: document.getElementById("amountInput"),
+ status: document.getElementById("status"),
+ warning: document.getElementById("warning"),
+ countdown: document.getElementById("countdown"),
+ stopBtn: document.getElementById("stopBtn"),
+ startBtn: document.getElementById("startBtn"),
+ authBtn: null, // Will be created dynamically
+ };
 
-        // Initialize
-        this.init();
-      }
+ // Initialize
+ this.init();
+ }
 
-      init() {
-        // Check for Pi Browser and SDK
-        if (!window.Pi) {
-          this.setWarning("This app requires Pi Browser.");
-          this.setStatus("Environment error.");
-          this.elements.startBtn.disabled = true;
-          return;
-        }
+ init() {
+ // Check for Pi Browser and SDK
+ if (!window.Pi) {
+ this.setWarning("This app requires Pi Browser.");
+ this.setStatus("Environment error.");
+ this.elements.startBtn.disabled = true;
+ return;
+ }
 
-        // Initialize Pi SDK
-        window.Pi.init({ version: "2.0", sandbox: false });
+ // Initialize Pi SDK
+ window.Pi.init({ version: "2.0", sandbox: false });
 
-        // Load existing logs
-        this.loadLogs();
+ // Load existing logs
+ this.loadLogs();
 
-        // Create Authenticate button
-        this.createAuthButton();
+ // Create Authenticate button
+ this.createAuthButton();
 
-        // Disable Start button until authenticated
-        this.elements.startBtn.disabled = true;
+ // Disable Start button until authenticated
+ this.elements.startBtn.disabled = true;
 
-        // Check network status
-        window.addEventListener("online", () => this.setWarning(""));
-        window.addEventListener("offline", () =>
-          this.setWarning("Offline. Please check your internet connection.")
-        );
+ // Check network status
+ window.addEventListener("online", () => this.setWarning(""));
+ window.addEventListener("offline", () =>
+ this.setWarning("Offline. Please check your internet connection.")
+ );
 
-        // Check if returning from wallet redirect
-        const urlParams = new URLSearchParams(window.location.search);
-        const isAuthReturn = urlParams.get("auth") === "try" || localStorage.getItem(AUTH_PENDING_KEY);
-        if (isAuthReturn) {
-          this.authenticate();
-        } else {
-          this.setStatus("Please authenticate with Pi Wallet.");
-          this.setWarning(
-            "Click 'Authenticate Wallet' to log in at wallet.pinet.com. You'll be redirected back here after login."
-          );
-        }
-      }
+ this.setStatus("Please authenticate with Pi Wallet.");
+ this.setWarning(
+ "If authentication fails, open wallet.pinet.com in Pi Browser, log in with your 24-word seed phrase or credentials, then return here and click 'Authenticate Wallet'."
+ );
+ }
 
-      createAuthButton() {
-        const authBtn = document.createElement("button");
-        authBtn.id = "authBtn";
-        authBtn.innerText = "Authenticate Wallet";
-        authBtn.style.backgroundColor = "#337ab7";
-        authBtn.style.marginTop = "10px";
-        authBtn.onclick = () => this.authenticate();
-        this.elements.startBtn.parentNode.insertBefore(authBtn, this.elements.startBtn);
-        this.elements.authBtn = authBtn;
-      }
+ createAuthButton() {
+ const authBtn = document.createElement("button");
+ authBtn.id = "authBtn";
+ authBtn.innerText = "Authenticate Wallet";
+ authBtn.style.backgroundColor = "#337ab7";
+ authBtn.style.marginTop = "10px";
+ authBtn.onclick = () => this.authenticate();
+ this.elements.startBtn.parentNode.insertBefore(authBtn, this.elements.startBtn);
+ this.elements.authBtn = authBtn;
+ }
 
-      authenticate(retryCount = 0, maxRetries = 3) {
-        // If first attempt, redirect to wallet
-        if (retryCount === 0 && !localStorage.getItem(AUTH_PENDING_KEY)) {
-          localStorage.setItem(AUTH_PENDING_KEY, "true");
-          const redirectUri = encodeURIComponent(`${window.location.origin}${window.location.pathname}?auth=try`);
-          window.location.href = `https://wallet.pinet.com/?redirect_uri=${redirectUri}`;
-          return;
-        }
+ authenticate(retryCount = 0, maxRetries = 3) {
+ this.setStatus("Attempting authentication...");
+ this.setWarning("");
+ this.elements.authBtn.disabled = true;
 
-        this.setStatus("Attempting authentication...");
-        this.setWarning("");
-        this.elements.authBtn.disabled = true;
+ window.Pi.authenticate(["username", "payments"])
+ .then((auth) => {
+ this.isAuthenticated = true;
+ this.setStatus("Authenticated. Ready to start.");
+ this.elements.authBtn.style.display = "none";
+ this.elements.startBtn.disabled = false;
+ this.log(`Authentication successful for user: ${auth.user.username}`);
+ })
+ .catch((err) => {
+ if (retryCount < maxRetries) {
+ this.setStatus(`Authentication failed. Retrying in ${AUTH_RETRY_DELAY_MS / 1000} seconds...`);
+ this.log(`Authentication failed (attempt ${retryCount + 1}): ${err.message}`);
+ setTimeout(() => {
+ this.elements.authBtn.disabled = false;
+ this.authenticate(retryCount + 1, maxRetries);
+ }, AUTH_RETRY_DELAY_MS);
+ } else {
+ this.setStatus("Authentication failed.");
+ this.setWarning(
+ `Wallet not connected: ${err.message}. Open wallet.pinet.com, log in with your 24-word seed phrase or credentials, and try again. Ensure Private DNS is off in phone settings and Pi Browser is updated.`
+ );
+ this.elements.authBtn.disabled = false;
+ this.log(`Authentication failed after ${maxRetries} attempts: ${err.message}`);
+ }
+ });
+ }
 
-        window.Pi.authenticate(["username", "payments"])
-          .then((auth) => {
-            this.isAuthenticated = true;
-            this.setStatus("Authenticated. Ready to start.");
-            this.elements.authBtn.style.display = "none";
-            this.elements.startBtn.disabled = false;
-            localStorage.removeItem(AUTH_PENDING_KEY);
-            this.log(`Authentication successful for user: ${auth.user.username}`);
-            // Clear URL parameters
-            window.history.replaceState({}, document.title, window.location.pathname);
-          })
-          .catch((err) => {
-            if (retryCount < maxRetries) {
-              this.setStatus(`Authentication failed. Retrying in ${AUTH_RETRY_DELAY_MS / 1000} seconds...`);
-              this.log(`Authentication failed (attempt ${retryCount + 1}): ${err.message}`);
-              setTimeout(() => {
-                this.elements.authBtn.disabled = false;
-                this.authenticate(retryCount + 1, maxRetries);
-              }, AUTH_RETRY_DELAY_MS);
-            } else {
-              this.setStatus("Authentication failed.");
-              this.setWarning(
-                `Wallet not connected: ${err.message}. Open wallet.pinet.com, log in, and try again. Ensure Private DNS is off in phone settings.`
-              );
-              this.elements.authBtn.disabled = false;
-              localStorage.removeItem(AUTH_PENDING_KEY);
-              this.log(`Authentication failed after ${maxRetries} attempts: ${err.message}`);
-              // Clear URL parameters
-              window.history.replaceState({}, document.title, window.location.pathname);
-            }
-          });
-      }
+ validateInputs() {
+ const { addressInput, dateInput, timeInput, amountInput } = this.elements;
+ const address = addressInput.value.trim();
+ const date = dateInput.value;
+ const time = timeInput.value;
+ const amount = parseFloat(amountInput.value);
 
-      validateInputs() {
-        const { addressInput, dateInput, timeInput, amountInput } = this.elements;
-        const address = addressInput.value.trim();
-        const date = dateInput.value;
-        const time = timeInput.value;
-        const amount = parseFloat(amountInput.value);
+ // Reset error styles
+ [addressInput, dateInput, timeInput, amountInput].forEach((el) =>
+ el.classList.remove("error")
+ );
 
-        // Reset error styles
-        [addressInput, dateInput, timeInput, amountInput].forEach((el) =>
-          el.classList.remove("error")
-        );
+ // Validate address
+ if (!address || address.length < 10) {
+ addressInput.classList.add("error");
+ throw new Error("Please enter a valid Pi wallet address.");
+ }
 
-        // Validate address
-        if (!address || address.length < 10) {
-          addressInput.classList.add("error");
-          throw new Error("Please enter a valid Pi wallet address.");
-        }
+ // Validate date and time
+ const unlockDate = new Date(`${date}T${time}`);
+ if (!date || !time || isNaN(unlockDate.getTime())) {
+ dateInput.classList.add("error");
+ timeInput.classList.add("error");
+ throw new Error("Please enter a valid date and time.");
+ }
+ if (unlockDate <= Date.now()) {
+ dateInput.classList.add("error");
+ timeInput.classList.add("error");
+ throw new Error("Unlock date and time must be in the future.");
+ }
 
-        // Validate date and time
-        const unlockDate = new Date(`${date}T${time}`);
-        if (!date || !time || isNaN(unlockDate.getTime())) {
-          dateInput.classList.add("error");
-          timeInput.classList.add("error");
-          throw new Error("Please enter a valid date and time.");
-        }
-        if (unlockDate <= Date.now()) {
-          dateInput.classList.add("error");
-          timeInput.classList.add("error");
-          throw new Error("Unlock date and time must be in the future.");
-        }
+ // Validate amount
+ if (isNaN(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+ amountInput.classList.add("error");
+ throw new Error(`Amount must be between ${MIN_AMOUNT} and ${MAX_AMOUNT} PI.`);
+ }
 
-        // Validate amount
-        if (isNaN(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
-          amountInput.classList.add("error");
-          throw new Error(`Amount must be between ${MIN_AMOUNT} and ${MAX_AMOUNT} PI.`);
-        }
+ return { address, unlockDate, amount };
+ }
 
-        return { address, unlockDate, amount };
-      }
+ start() {
+ try {
+ if (!this.isAuthenticated) {
+ throw new Error("Please authenticate with Pi Wallet first.");
+ }
 
-      start() {
-        try {
-          if (!this.isAuthenticated) {
-            throw new Error("Please authenticate with Pi Wallet first.");
-          }
+ const { address, unlockDate, amount } = this.validateInputs();
 
-          const { address, unlockDate, amount } = this.validateInputs();
+ // Confirm with user
+ if (
+ !confirm(
+ `Confirm transaction:\nRecipient: ${address}\nDate: ${unlockDate.toLocaleString()}\nAmount: ${amount} PI`
+ )
+ ) {
+ this.setStatus("Bot startup canceled.");
+ return;
+ }
 
-          // Confirm with user
-          if (
-            !confirm(
-              `Confirm transaction:\nRecipient: ${address}\nDate: ${unlockDate.toLocaleString()}\nAmount: ${amount} PI`
-            )
-          ) {
-            this.setStatus("Bot startup canceled.");
-            return;
-          }
+ this.recipientAddress = address;
+ this.piAmount = amount;
+ this.unlockTime = unlockDate.getTime();
 
-          this.recipientAddress = address;
-          this.piAmount = amount;
-          this.unlockTime = unlockDate.getTime();
+ this.setStatus("Waiting for unlock time...");
+ this.log(`Bot started at ${new Date().toISOString()}`);
+ this.log(`Unlock scheduled for: ${unlockDate.toISOString()}`);
+ this.log(`Amount: ${amount} PI to ${address}`);
 
-          this.setStatus("Waiting for unlock time...");
-          this.log(`Bot started at ${new Date().toISOString()}`);
-          this.log(`Unlock scheduled for: ${unlockDate.toISOString()}`);
-          this.log(`Amount: ${amount} PI to ${address}`);
+ this.startCountdown();
+ } catch (err) {
+ this.setWarning(err.message);
+ this.log(`Error: ${err.message}`);
+ }
+ }
 
-          this.startCountdown();
-        } catch (err) {
-          this.setWarning(err.message);
-          this.log(`Error: ${err.message}`);
-        }
-      }
+ startCountdown() {
+ this.countdownInterval = setInterval(() => {
+ const now = Date.now();
+ const diff = this.unlockTime - now;
 
-      startCountdown() {
-        this.countdownInterval = setInterval(() => {
-          const now = Date.now();
-          const diff = this.unlockTime - now;
+ if (diff <= 0) {
+ clearInterval(this.countdownInterval);
+ this.elements.countdown.innerText = "0h 0m 0s";
+ this.attemptSendLoop();
+ } else {
+ const hrs = Math.floor(diff / 3600000);
+ const mins = Math.floor((diff % 3600000) / 60000);
+ const secs = Math.floor((diff % 60000) / 1000);
+ this.elements.countdown.innerText = `${hrs}h ${mins}m ${secs}s`;
+ }
+ }, 500);
+ }
 
-          if (diff <= 0) {
-            clearInterval(this.countdownInterval);
-            this.elements.countdown.innerText = "0h 0m 0s";
-            this.attemptSendLoop();
-          } else {
-            const hrs = Math.floor(diff / 3600000);
-            const mins = Math.floor((diff % 3600000) / 60000);
-            const secs = Math.floor((diff % 60000) / 1000);
-            this.elements.countdown.innerText = `${hrs}h ${mins}m ${secs}s`;
-          }
-        }, 500);
-      }
+ attemptSendLoop() {
+ if (!navigator.onLine) {
+ this.setStatus("Offline. Waiting for connection...");
+ this.setWarning("Please check your internet connection.");
+ return;
+ }
 
-      attemptSendLoop() {
-        if (!navigator.onLine) {
-          this.setStatus("Offline. Waiting for connection...");
-          this.setWarning("Please check your internet connection.");
-          return;
-        }
+ this.setStatus("Unlock time reached. Attempting to send...");
+ this.elements.stopBtn.style.display = "inline-block";
 
-        this.setStatus("Unlock time reached. Attempting to send...");
-        this.elements.stopBtn.style.display = "inline-block";
+ this.sendInterval = setInterval(() => {
+ const timestamp = new Date().toISOString();
+ this.log(`[${timestamp}] Attempting transaction...`);
 
-        this.sendInterval = setInterval(() => {
-          const timestamp = new Date().toISOString();
-          this.log(`[${timestamp}] Attempting transaction...`);
+ window.Pi.createPayment({
+ amount: this.piAmount,
+ memo: "Auto-send from Pi Bot",
+ to: this.recipientAddress,
+ })
+ .then((payment) => {
+ clearInterval(this.sendInterval);
+ this.setStatus(`Success! Transaction ID: ${payment.identifier}`);
+ this.elements.stopBtn.style.display = "none";
+ this.log(`[${timestamp}] SUCCESS: Transaction ID ${payment.identifier}`);
+ this.downloadLog();
+ alert("Transaction sent successfully!");
+ })
+ .catch((err) => {
+ this.log(`[${timestamp}] Retry failed: ${err.message}`);
+ this.setStatus(`Retrying... ${err.message}`);
 
-          window.Pi.createPayment({
-            amount: this.piAmount,
-            memo: "Auto-send from Pi Bot",
-            to: this.recipientAddress,
-          })
-            .then((payment) => {
-              clearInterval(this.sendInterval);
-              this.setStatus(`Success! Transaction ID: ${payment.identifier}`);
-              this.elements.stopBtn.style.display = "none";
-              this.log(`[${timestamp}] SUCCESS: Transaction ID ${payment.identifier}`);
-              this.downloadLog();
-              alert("Transaction sent successfully!");
-            })
-            .catch((err) => {
-              this.log(`[${timestamp}] Retry failed: ${err.message}`);
-              this.setStatus(`Retrying... ${err.message}`);
+ // Stop retries for non-recoverable errors
+ if (
+ err.message.includes("insufficient balance") ||
+ err.message.includes("invalid address") ||
+ err.message.includes("unauthorized")
+ ) {
+ clearInterval(this.sendInterval);
+ this.setStatus(`Fatal error: ${err.message}`);
+ this.elements.stopBtn.style.display = "none";
+ this.log(`[${timestamp}] Stopped due to fatal error: ${err.message}`);
+ this.downloadLog();
+ alert(`Transaction failed: ${err.message}`);
+ }
+ });
+ }, RETRY_INTERVAL_MS);
+ }
 
-              // Stop retries for non-recoverable errors
-              if (
-                err.message.includes("insufficient balance") ||
-                err.message.includes("invalid address") ||
-                err.message.includes("unauthorized")
-              ) {
-                clearInterval(this.sendInterval);
-                this.setStatus(`Fatal error: ${err.message}`);
-                this.elements.stopBtn.style.display = "none";
-                this.log(`[${timestamp}] Stopped due to fatal error: ${err.message}`);
-                this.downloadLog();
-                alert(`Transaction failed: ${err.message}`);
-              }
-            });
-        }, RETRY_INTERVAL_MS);
-      }
+ stopRetry() {
+ if (this.sendInterval) {
+ clearInterval(this.sendInterval);
+ this.sendInterval = null;
+ this.setStatus("Retry loop stopped manually.");
+ this.elements.stopBtn.style.display = "none";
+ this.log(`[${new Date().toISOString()}] Retry stopped by user.`);
+ this.downloadLog();
+ }
+ }
 
-      stopRetry() {
-        if (this.sendInterval) {
-          clearInterval(this.sendInterval);
-          this.sendInterval = null;
-          this.setStatus("Retry loop stopped manually.");
-          this.elements.stopBtn.style.display = "none";
-          this.log(`[${new Date().toISOString()}] Retry stopped by user.`);
-          this.downloadLog();
-        }
-      }
+ reset() {
+ clearInterval(this.countdownInterval);
+ clearInterval(this.sendInterval);
+ this.unlockTime = null;
+ this.sendInterval = null;
+ this.piAmount = null;
+ this.recipientAddress = null;
+ this.elements.addressInput.value = "";
+ this.elements.dateInput.value = "";
+ this.elements.timeInput.value = "";
+ this.elements.amountInput.value = "";
+ this.elements.status.innerText = this.isAuthenticated
+ ? "Authenticated. Ready to start."
+ : "Please authenticate with Pi Wallet.";
+ this.elements.countdown.innerText = "";
+ this.elements.warning.innerText = "";
+ this.elements.stopBtn.style.display = "none";
+ this.elements.startBtn.disabled = !this.isAuthenticated;
+ [this.elements.addressInput, this.elements.dateInput, this.elements.timeInput, this.elements.amountInput].forEach(
+ (el) => el.classList.remove("error")
+ );
+ this.log(`[${new Date().toISOString()}] Bot reset by user.`);
+ }
 
-      reset() {
-        clearInterval(this.countdownInterval);
-        clearInterval(this.sendInterval);
-        this.unlockTime = null;
-        this.sendInterval = null;
-        this.piAmount = null;
-        this.recipientAddress = null;
-        this.elements.addressInput.value = "";
-        this.elements.dateInput.value = "";
-        this.elements.timeInput.value = "";
-        this.elements.amountInput.value = "";
-        this.elements.status.innerText = this.isAuthenticated
-          ? "Authenticated. Ready to start."
-          : "Please authenticate with Pi Wallet.";
-        this.elements.countdown.innerText = "";
-        this.elements.warning.innerText = "";
-        this.elements.stopBtn.style.display = "none";
-        this.elements.startBtn.disabled = !this.isAuthenticated;
-        [this.elements.addressInput, this.elements.dateInput, this.elements.timeInput, this.elements.amountInput].forEach(
-          (el) => el.classList.remove("error")
-        );
-        this.log(`[${new Date().toISOString()}] Bot reset by user.`);
-      }
+ log(message) {
+ this.logs.push(message);
+ this.saveLogs();
+ }
 
-      log(message) {
-        this.logs.push(message);
-        this.saveLogs();
-      }
+ saveLogs() {
+ try {
+ localStorage.setItem(LOG_STORAGE_KEY, this.logs.join("\n"));
+ } catch (e) {
+ this.downloadLog();
+ }
+ }
 
-      saveLogs() {
-        try {
-          localStorage.setItem(LOG_STORAGE_KEY, this.logs.join("\n"));
-        } catch (e) {
-          this.downloadLog();
-        }
-      }
+ loadLogs() {
+ const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
+ if (savedLogs) {
+ this.logs = savedLogs.split("\n");
+ }
+ }
 
-      loadLogs() {
-        const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
-        if (savedLogs) {
-          this.logs = savedLogs.split("\n");
-        }
-      }
+ downloadLog() {
+ const blob = new Blob([this.logs.join("\n")], { type: "text/plain" });
+ const link = document.createElement("a");
+ link.href = URL.createObjectURL(blob);
+ link.download = `pi_bot_log_${Date.now()}.txt`;
+ link.click();
+ }
 
-      downloadLog() {
-        const blob = new Blob([this.logs.join("\n")], { type: "text/plain" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `pi_bot_log_${Date.now()}.txt`;
-        link.click();
-      }
+ setStatus(message) {
+ this.elements.status.innerText = message;
+ }
 
-      setStatus(message) {
-        this.elements.status.innerText = message;
-      }
+ setWarning(message) {
+ this.elements.warning.innerText = message;
+ }
+ }
 
-      setWarning(message) {
-        this.elements.warning.innerText = message;
-      }
-    }
-
-    // Instantiate the bot
-    const piBot = new PiBot();
-  </script>
+ // Instantiate the bot
+ const piBot = new PiBot();
+ </script>
 </body>
 </html>
